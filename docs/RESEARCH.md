@@ -1,5 +1,7 @@
 # Mogz: evidence and reconstruction
 
+The investigation below describes the original protocol research. Forge now has a separate live engine; see [architecture](ARCHITECTURE.md) and [deployment acceptance](DEPLOYMENT.md) for current runtime behavior and validation limits. The original standalone builder remains devnet-only, while the live engine explicitly supports configured mainnet operation.
+
 Investigated 28 October 2026. Target is the **MOGZ mint**, not a custom token program:
 `Pmfm2RprxQRKZH1XWVsBUc2KgCTyzeDTSFbT1vJmogz`.
 

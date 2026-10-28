@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const temp = await mkdtemp(join(tmpdir(), 'forge-browser-'));
 const child = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], {
-  env: { ...process.env, PORT: '18788', DATA_PATH: join(temp, 'paper.sqlite') },
+  env: { ...process.env, APP_MODE: 'paper', PORT: '18788', DATA_PATH: join(temp, 'paper.sqlite') },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let browser;

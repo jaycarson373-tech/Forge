@@ -7,8 +7,12 @@ import { Store } from './store.js';
 import { inspectMint } from './inspect.js';
 import { execute, makeCoin, quote } from '../src/domain.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { readRuntime } from './runtime.js';
+import { LiveHTTP, HttpError } from './live-http.js';
 if (existsSync('.env')) loadEnvFile('.env');
-const store = new Store(process.env.DATA_PATH || 'data/forge.sqlite');
+const runtime = readRuntime();
+const store = runtime.mode === 'paper' ? new Store(runtime.dataPath) : null;
+const live = new LiveHTTP(runtime);
 const mime: Record<string, string> = {
   '.html': 'text/html',
   '.js': 'text/javascript',
@@ -32,27 +36,50 @@ async function body(req: IncomingMessage) {
 export const server = createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (runtime.production) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    );
+  }
   const url = new URL(req.url || '/', 'http://localhost');
   try {
     if (req.method === 'POST') {
       const origin = req.headers.origin;
-      if (origin && new URL(origin).host !== req.headers.host)
+      if (
+        origin &&
+        (runtime.production
+          ? origin !== runtime.publicUrl
+          : new URL(origin).host !== req.headers.host)
+      )
         return send(res, 403, { error: 'Cross-origin writes are disabled.' });
       if (!req.headers['content-type']?.startsWith('application/json'))
         return send(res, 415, { error: 'Use application/json.' });
     }
+    if (req.method === 'GET' && url.pathname === '/healthz')
+      return send(res, 200, { ok: true, mode: runtime.mode });
+    if (req.method === 'GET' && url.pathname === '/readyz') {
+      const status = await live.chain.status();
+      return send(res, status.launchEnabled ? 200 : 503, status);
+    }
+    if (await live.handle(req, res, url)) return;
     if (req.method === 'GET' && url.pathname === '/api/config')
       return send(res, 200, {
-        mode: 'paper',
+        mode: runtime.mode,
         balanceLabel: 'Paper SOL',
         sdk: '2.0.0',
-        liveTransactions: false,
+        liveTransactions: runtime.transactionsEnabled,
       });
-    if (req.method === 'GET' && url.pathname === '/api/paper') return send(res, 200, store.read());
+    if (url.pathname.startsWith('/api/paper') && !store)
+      return send(res, 404, { error: 'Paper execution is unavailable in live mode.' });
+    if (req.method === 'GET' && url.pathname === '/api/paper') return send(res, 200, store!.read());
     if (req.method === 'POST' && url.pathname === '/api/paper/create') {
       const input = await body(req);
       const coin = makeCoin(input.name, input.ticker, input.description, input.mode);
-      store.update((s) => {
+      store!.update((s) => {
         if (s.coins.length >= 200)
           throw new Error('Paper launch limit reached. Reset the sandbox to continue.');
         s.coins.unshift(coin);
@@ -64,7 +91,7 @@ export const server = createServer(async (req, res) => {
       if (input.side !== 'buy' && input.side !== 'sell') throw new Error('Invalid side.');
       if (typeof input.amount !== 'string' || !/^\d{1,32}$/.test(input.amount))
         throw new Error('Invalid amount.');
-      const coin = store.read().coins.find((c) => c.id === input.coinId);
+      const coin = store!.read().coins.find((c) => c.id === input.coinId);
       if (!coin) throw new Error('Coin not found.');
       const q = quote(coin, input.side, BigInt(input.amount), Math.floor(Date.now() / 400));
       return send(res, 200, {
@@ -79,13 +106,13 @@ export const server = createServer(async (req, res) => {
       return send(
         res,
         200,
-        store.update((s) => execute(s, input)),
+        store!.update((s) => execute(s, input)),
       );
     }
     if (req.method === 'POST' && url.pathname === '/api/paper/reset') {
       await body(req);
-      store.reset();
-      return send(res, 200, store.read());
+      store!.reset();
+      return send(res, 200, store!.read());
     }
     if (req.method === 'GET' && url.pathname.startsWith('/api/inspect/')) {
       const address = url.pathname.slice('/api/inspect/'.length);
@@ -107,21 +134,29 @@ export const server = createServer(async (req, res) => {
       return send(res, 403, { error: 'Forbidden.' });
     if (!extname(file)) file = resolve(base, 'index.html');
     const bytes = await readFile(file);
-    res.writeHead(200, { 'Content-Type': mime[extname(file)] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'Content-Type': mime[extname(file)] || 'application/octet-stream',
+      'Cache-Control': file.includes('assets') ? 'public, max-age=31536000, immutable' : 'no-cache',
+    });
     res.end(req.method === 'HEAD' ? undefined : bytes);
   } catch (error) {
-    send(res, 400, { error: error instanceof Error ? error.message : 'Request failed.' });
+    send(res, error instanceof HttpError ? error.status : 400, {
+      error: error instanceof Error ? error.message : 'Request failed.',
+    });
   }
 });
 server.listen(Number(process.env.PORT || 8787), process.env.HOST || '127.0.0.1', () =>
   console.log(
-    `Forge → http://${process.env.HOST || '127.0.0.1'}:${process.env.PORT || 8787} · paper mode`,
+    `Forge → http://${process.env.HOST || '127.0.0.1'}:${process.env.PORT || 8787} · ${runtime.mode} mode`,
   ),
 );
 for (const signal of ['SIGINT', 'SIGTERM'] as const)
   process.on(signal, () =>
     server.close(() => {
-      store.close();
+      store?.close();
+      live.close();
       process.exit(0);
     }),
   );
+server.requestTimeout = 30000;
+server.headersTimeout = 10000;

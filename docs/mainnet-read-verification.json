@@ -1,0 +1,44 @@
+{
+  "market": {
+    "mint": "Pmfm2RprxQRKZH1XWVsBUc2KgCTyzeDTSFbT1vJmogz",
+    "pool": "5WjHphSGhuicUuXC2Hur2DcYTxvL6fVRaeJr4wsiPej5",
+    "executionPool": "7j13CapqLC4dGaGYFCxgL8t31R7B1Gt93uBh8EdoRp9H",
+    "config": "BpRX1sLFrgVPcgZAfpQEZjjnnPCX2CANUzrHn3TouqSq",
+    "creator": "EriJ18cDFiaFQQzccEF8beH13GVCTgChRihZqpQn6vey",
+    "name": "Token Pmfm2R",
+    "ticker": "Pmfm2",
+    "description": "",
+    "image": "",
+    "uri": "",
+    "price": 0.000005964745852848252,
+    "marketCap": 5964.745852848252,
+    "decimals": 6,
+    "progress": 1,
+    "route": "damm-v2",
+    "ownConfig": false,
+    "creatorFees": "0",
+    "platformFees": "0",
+    "metrics": {
+      "totalProtocolBaseFee": "0",
+      "totalProtocolQuoteFee": "492645837",
+      "totalTradingBaseFee": "0",
+      "totalTradingQuoteFee": "2227938260"
+    },
+    "observedAt": 1793201216555
+  },
+  "quote": {
+    "mint": "Pmfm2RprxQRKZH1XWVsBUc2KgCTyzeDTSFbT1vJmogz",
+    "side": "buy",
+    "amountIn": "10000000",
+    "amountOut": "1669257126",
+    "minimumAmountOut": "1652564554",
+    "fee": "43000",
+    "slippageBps": 100,
+    "route": "damm-v2",
+    "pool": "7j13CapqLC4dGaGYFCxgL8t31R7B1Gt93uBh8EdoRp9H",
+    "quotedAt": 1793201216717,
+    "expiresAt": 1793201236717
+  },
+  "signed": false,
+  "broadcast": false
+}

@@ -14,5 +14,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm build:server
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:browser
+      - run: pnpm test:browser:live
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t forge-ci .
+      - run: docker run --name forge-smoke -d -e PUBLIC_URL=https://forge.example -p 8787:8787 forge-ci
+      - run: |
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:8787/healthz; then exit 0; fi
+            sleep 1
+          done
+          docker logs forge-smoke
+          exit 1
+      - run: |
+          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/paper)" = 404
+          test "$(curl --silent -o /dev/null -w '%{http_code}' -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8787/api/live/auth/challenge)" = 403

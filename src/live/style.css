@@ -1,0 +1,112 @@
+.live-tag {
+  color: #b9ff65;
+  background: #202b19;
+  border-color: #40512e;
+}
+.live-notice {
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 18px;
+  background: #1c2b20;
+  border: 1px solid #355a3c;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 12px;
+  color: #c1dbbc;
+}
+.live-notice a {
+  color: #b9ff65;
+}
+.live-notice button {
+  border: 0;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.setup-banner {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  background: #231f17;
+  border: 1px solid #53462d;
+  padding: 20px;
+  border-radius: 9px;
+  margin-bottom: 24px;
+}
+.setup-banner strong {
+  font-size: 13px;
+  color: #dbccaa;
+}
+.setup-banner p {
+  font-size: 11px;
+  color: #b1a285;
+  margin: 7px 0 0;
+}
+.setup-banner button {
+  flex-shrink: 0;
+}
+.live-grid {
+  margin: 25px 0;
+}
+.live-grid .progress-label {
+  margin-top: 25px;
+}
+.live-grid img.avatar {
+  object-fit: cover;
+}
+.intent {
+  margin: 24px 0;
+  font-size: 11px;
+  line-height: 1.8;
+}
+.intent dt {
+  color: #7d8b94;
+  margin-top: 13px;
+}
+.intent dd {
+  margin: 3px 0 0;
+  color: #c9d5d9;
+  overflow-wrap: anywhere;
+}
+.break-word {
+  overflow-wrap: anywhere;
+}
+.wallet-option {
+  margin-top: 18px;
+}
+.slippage > input {
+  width: 76px;
+  margin-top: 15px;
+}
+.live-notice a {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.launch-form {
+  max-width: 650px;
+}
+.launch-form label {
+  margin-bottom: 20px;
+}
+.launch-form input,
+.launch-form textarea {
+  margin-top: 10px;
+}
+.launch-form .primary {
+  margin-top: 22px;
+}
+@media (max-width: 570px) {
+  .setup-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .live-notice {
+    font-size: 10px;
+    gap: 8px;
+  }
+  .live-grid .card-price strong {
+    font-size: 21px;
+  }
+}

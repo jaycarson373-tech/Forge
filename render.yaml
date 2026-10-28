@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: rift-forge
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    disk:
+      name: forge-data
+      mountPath: /app/data
+      sizeGB: 5
+    envVars:
+      - key: PUBLIC_URL
+        sync: false
+      - key: SOLANA_RPC_URL
+        sync: false
+      - key: PLATFORM_FEE_WALLET
+        sync: false
+      - key: SOLANA_CLUSTER
+        value: mainnet-beta
+      - key: ENABLE_MAINNET_TRANSACTIONS
+        value: 'false'
+      - key: APP_MODE
+        value: live

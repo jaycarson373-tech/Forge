@@ -1,5 +1,6 @@
 pnpm-lock.yaml
 dist
+dist-server
 node_modules
 data
 docs/mogz-chain-snapshot.json

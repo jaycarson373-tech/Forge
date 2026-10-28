@@ -1057,4 +1057,19 @@ function Research() {
     </>
   );
 }
-createRoot(document.getElementById('root')!).render(<App />);
+const root = createRoot(document.getElementById('root')!);
+api<{ mode: string }>('config')
+  .then(async (config) => {
+    if (config.mode === 'live') {
+      const { LiveApp } = await import('./live/LiveApp');
+      root.render(<LiveApp />);
+    } else root.render(<App />);
+  })
+  .catch(() =>
+    root.render(
+      <div className="panel">
+        <h1>Forge is unavailable.</h1>
+        <p>The API could not be reached. Start the server and reload.</p>
+      </div>,
+    ),
+  );

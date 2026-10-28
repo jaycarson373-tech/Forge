@@ -1,6 +1,6 @@
 {
   "name": "rift-forge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "An original Solana launchpad workbench built on Meteora DBC",
@@ -14,17 +14,26 @@
     "scan": "tsx scripts/scan.ts",
     "check": "pnpm test && pnpm build",
     "test:browser": "node scripts/browser-test.mjs",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --packages=external --format=esm --outfile=dist-server/index.mjs",
+    "test:devnet": "tsx scripts/devnet-acceptance.ts",
+    "verify:chain": "tsx scripts/verify-chain.ts",
+    "test:browser:live": "node scripts/live-browser-test.mjs",
+    "preflight": "tsx scripts/preflight.ts"
   },
   "engines": {
     "node": ">=24.2"
   },
   "dependencies": {
+    "@meteora-ag/cp-amm-sdk": "^1.5.1",
     "@meteora-ag/dynamic-bonding-curve-sdk": "2.0.0",
+    "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "1.98.4",
     "bn.js": "^5.2.5",
+    "bs58": "6.0.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@types/bn.js": "^5.2.0",
@@ -32,6 +41,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "esbuild": "0.28.2",
     "playwright": "^1.64.1",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",

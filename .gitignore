@@ -3,6 +3,8 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.production.example
+dist-server/
 data/
 coverage/
 *.log

@@ -103,7 +103,7 @@ export class MeteoraBuilder {
   }
   async assertDevnet() {
     const hash = await this.connection.getGenesisHash();
-    if (hash !== 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1')
+    if (hash !== 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG')
       throw new Error('Transaction builders are restricted to Solana devnet.');
   }
   async createConfig(

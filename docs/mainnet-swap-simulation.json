@@ -1,0 +1,23 @@
+{
+  "simulation": {
+    "ok": true,
+    "units": 47411
+  },
+  "intent": {
+    "kind": "swap",
+    "mint": "Pmfm2RprxQRKZH1XWVsBUc2KgCTyzeDTSFbT1vJmogz",
+    "side": "buy",
+    "amountIn": "10000000",
+    "amountOut": "1630474679",
+    "minimumAmountOut": "1614169932",
+    "fee": "43000",
+    "slippageBps": 100,
+    "route": "damm-v2",
+    "pool": "7j13CapqLC4dGaGYFCxgL8t31R7B1Gt93uBh8EdoRp9H",
+    "quotedAt": 1793201905908,
+    "expiresAt": 1793201925908
+  },
+  "networkFee": "10000",
+  "signed": false,
+  "broadcast": false
+}
