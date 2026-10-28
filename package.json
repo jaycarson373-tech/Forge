@@ -1,0 +1,42 @@
+{
+  "name": "rift-forge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An original Solana launchpad workbench built on Meteora DBC",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "vite --host 127.0.0.1",
+    "dev:api": "tsx watch server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx server/index.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "scan": "tsx scripts/scan.ts",
+    "check": "pnpm test && pnpm build",
+    "test:browser": "node scripts/browser-test.mjs",
+    "format": "prettier --write ."
+  },
+  "engines": {
+    "node": ">=24.2"
+  },
+  "dependencies": {
+    "@meteora-ag/dynamic-bonding-curve-sdk": "2.0.0",
+    "@solana/web3.js": "1.98.4",
+    "bn.js": "^5.2.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.2.0",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "playwright": "^1.64.1",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5"
+  },
+  "packageManager": "pnpm@11.25.0"
+}
