@@ -1058,18 +1058,37 @@ function Research() {
   );
 }
 const root = createRoot(document.getElementById('root')!);
-api<{ mode: string }>('config')
-  .then(async (config) => {
-    if (config.mode === 'live') {
-      const { LiveApp } = await import('./live/LiveApp');
-      root.render(<LiveApp />);
-    } else root.render(<App />);
-  })
-  .catch(() =>
-    root.render(
-      <div className="panel">
-        <h1>Forge is unavailable.</h1>
-        <p>The API could not be reached. Start the server and reload.</p>
-      </div>,
-    ),
+function openForge() {
+  root.render(
+    <div className="panel">
+      <h1>Opening Forge…</h1>
+      <p>Connecting to the local app.</p>
+    </div>,
   );
+  fetch('/api/config', { cache: 'no-store', signal: AbortSignal.timeout(10000) })
+    .then(async (response) => {
+      if (!response.ok) throw new Error('The API did not respond successfully.');
+      return (await response.json()) as { mode: string };
+    })
+    .then(async (config) => {
+      if (config.mode === 'live') {
+        const { LiveApp } = await import('./live/LiveApp');
+        root.render(<LiveApp />);
+      } else root.render(<App />);
+    })
+    .catch(() =>
+      root.render(
+        <div className="panel">
+          <h1>Forge is unavailable.</h1>
+          <p>
+            The local server or application files could not be reached. On this computer, open{' '}
+            <strong>Open Forge.cmd</strong> in the Forge folder, then retry.
+          </p>
+          <button className="primary" onClick={() => window.location.reload()}>
+            Retry Forge ↗
+          </button>
+        </div>,
+      ),
+    );
+}
+openForge();
