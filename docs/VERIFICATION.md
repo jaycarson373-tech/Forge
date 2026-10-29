@@ -1,4 +1,6 @@
-# Live release verification (v0.2)
+# Live release verification (v0.2.1)
+
+29 October update: **25 tests passed**, including an actual API/Vite integration test for sign-in, immutable JSON and image routes; favorable/adverse price movement and tampered quote cases; read coalescing; session renewal and strict production origin checks. Both browser suites passed. The live browser fixture explicitly rejects the first preparation with HTTP 401, verifies recovery through a new wallet sign-in, and checks wallet disconnection. Production launch/acceptance limits below remain unchanged.
 
 Verified locally on 28 October 2026 with Node 24.22.1, TypeScript 5.9.3, DBC SDK 2.0.0 and DAMM v2 SDK 1.5.1.
 

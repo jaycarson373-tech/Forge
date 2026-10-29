@@ -1,6 +1,6 @@
 {
   "name": "rift-forge",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "An original Solana launchpad workbench built on Meteora DBC",

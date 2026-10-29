@@ -3,6 +3,7 @@ import { Keypair, PublicKey, Transaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { units, decimal } from '../domain';
 import './style.css';
+import { liveApi as api, ApiError, WalletSession } from './client';
 type Status = {
   cluster: string;
   publicUrl: string;
@@ -39,6 +40,7 @@ type Balance = {
   signatures: { signature: string; time: number; error: unknown }[];
 };
 type Quote = {
+  quoteId: string;
   amountIn: string;
   amountOut: string;
   minimumAmountOut: string;
@@ -72,19 +74,6 @@ const fmt = (n: number, d = 5) => n.toLocaleString('en', { maximumFractionDigits
 const short = (s: string) => (s ? s.slice(0, 5) + '…' + s.slice(-5) : 'Not configured');
 const link = (kind: string, id: string, cluster: string) =>
   `https://solscan.io/${kind}/${id}${cluster === 'devnet' ? '?cluster=devnet' : ''}`;
-async function api<T>(path: string, data?: unknown, token = ''): Promise<T> {
-  const r = await fetch('/api/live/' + path, {
-    method: data === undefined ? 'GET' : 'POST',
-    headers: {
-      ...(data === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(data === undefined ? {} : { body: JSON.stringify(data) }),
-  });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || 'Request failed.');
-  return j;
-}
 export function LiveApp() {
   const [status, setStatus] = useState<Status | null>(null),
     [markets, setMarkets] = useState<Market[]>([]),
@@ -103,20 +92,58 @@ export function LiveApp() {
     ),
     [choices, setChoices] = useState<{ name: string; p: Wallet }[]>([]);
   const provider = useRef<Wallet | null>(null),
-    session = useRef(''),
+    session = useRef(new WalletSession()),
     extraSigner = useRef<Keypair | null>(null),
     onConfirmed = useRef<null | (() => Promise<void>)>(null),
     monitoring = useRef(false);
+  const walletIdentity = useRef('');
+  const refreshing = useRef(false);
+  const [feedError, setFeedError] = useState(''),
+    [refreshingFeed, setRefreshingFeed] = useState(false),
+    [updatedAt, setUpdatedAt] = useState(0);
   const refresh = async () => {
-    const s = await api<Status>('status');
-    setStatus(s);
-    setMarkets(s.configReady ? await api<Market[]>('markets') : []);
+    if (refreshing.current) return;
+    refreshing.current = true;
+    setRefreshingFeed(true);
+    try {
+      const s = await api<Status>('status');
+      setStatus(s);
+      const results = await Promise.allSettled([
+        s.configReady ? api<Market[]>('markets') : Promise.resolve([]),
+        api<{ coins: Market[]; errors: string[] }>('featured'),
+      ]);
+      const own = results[0].status === 'fulfilled' ? results[0].value : [];
+      const featured =
+        results[1].status === 'fulfilled' ? results[1].value : { coins: [], errors: [] };
+      const combined = [...own, ...featured.coins];
+      if (combined.length || results.every((r) => r.status === 'fulfilled'))
+        setMarkets([...new Map(combined.map((m) => [m.mint, m])).values()]);
+      const errors = results
+        .filter((r) => r.status === 'rejected')
+        .map((r) => (r as PromiseRejectedResult).reason.message);
+      setFeedError([...errors, ...featured.errors].join(' '));
+      setUpdatedAt(Date.now());
+    } catch (e) {
+      setFeedError((e as Error).message);
+      throw e;
+    } finally {
+      refreshing.current = false;
+      setRefreshingFeed(false);
+    }
   };
   const refreshBalance = async () => {
-    if (wallet) setBalance(await api<Balance>('balance?wallet=' + wallet));
+    if (wallet) {
+      const result = await api<Balance>('balance?wallet=' + wallet);
+      if (walletIdentity.current === wallet) setBalance(result);
+    }
   };
   useEffect(() => {
     refresh().catch((e) => setError(e.message));
+    const mint = new URLSearchParams(window.location.search).get('mint');
+    if (mint)
+      api<Market>('market?mint=' + encodeURIComponent(mint))
+        .then(setMarket)
+        .catch((e) => setError(e.message));
     const t = setInterval(() => refresh().catch(() => {}), 20000);
     return () => clearInterval(t);
   }, []);
@@ -126,7 +153,8 @@ export function LiveApp() {
     const t = setInterval(() => refreshBalance().catch(() => {}), 15000);
     const p = provider.current;
     const changed = () => {
-      session.current = '';
+      walletIdentity.current = '';
+      session.current.clear();
       setWallet('');
       setBalance(null);
       setPrepared(null);
@@ -143,14 +171,24 @@ export function LiveApp() {
   }, [wallet]);
   useEffect(() => {
     if (!market) return;
+    let active = true;
+    const controller = new AbortController();
     const t = setInterval(
       () =>
-        api<Market>('market?mint=' + market.mint)
-          .then(setMarket)
-          .catch((e) => setError(e.message)),
+        api<Market>('market?mint=' + market.mint, undefined, '', controller.signal)
+          .then((value) => {
+            if (active) setMarket(value);
+          })
+          .catch((e) => {
+            if (active) setError(e.message);
+          }),
       15000,
     );
-    return () => clearInterval(t);
+    return () => {
+      active = false;
+      controller.abort();
+      clearInterval(t);
+    };
   }, [market?.mint]);
   const connect = async (p?: Wallet) => {
     try {
@@ -181,8 +219,9 @@ export function LiveApp() {
       }
       const r = await p.connect();
       provider.current = p;
-      session.current = '';
+      session.current.clear();
       setWallet(r.publicKey.toBase58());
+      walletIdentity.current = r.publicKey.toBase58();
       setChoices([]);
       setNotice('Connected. Each live transaction requires your wallet signature.');
     } catch (e) {
@@ -190,17 +229,41 @@ export function LiveApp() {
     }
   };
   const auth = async () => {
-    if (!provider.current || !wallet) throw new Error('Connect your wallet first.');
-    if (session.current) return session.current;
-    const c = await api<{ id: string; message: string }>('auth/challenge', { wallet });
-    const s = await provider.current.signMessage(new TextEncoder().encode(c.message), 'utf8');
-    const r = await api<{ token: string; wallet: string }>('auth/verify', {
-      id: c.id,
-      signature: encode(s instanceof Uint8Array ? s : s.signature),
+    const p = provider.current;
+    if (!p || !wallet) throw new Error('Connect your wallet first.');
+    return session.current.get(wallet, async () => {
+      const c = await api<{ id: string; message: string }>('auth/challenge', { wallet });
+      const s = await p.signMessage(new TextEncoder().encode(c.message), 'utf8');
+      const r = await api<{ token: string; wallet: string; expires: number }>('auth/verify', {
+        id: c.id,
+        signature: encode(s instanceof Uint8Array ? s : s.signature),
+      });
+      if (r.wallet !== wallet) throw new Error('Wallet changed during sign-in.');
+      return r;
     });
-    if (r.wallet !== wallet) throw new Error('Wallet changed during sign-in.');
-    session.current = r.token;
-    return r.token;
+  };
+  const authed = async <T,>(path: string, data?: unknown): Promise<T> => {
+    try {
+      return await api<T>(path, data, await auth());
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 401) throw e;
+      session.current.clear();
+      return api<T>(path, data, await auth());
+    }
+  };
+  const disconnect = async () => {
+    walletIdentity.current = '';
+    const p = provider.current;
+    provider.current = null;
+    session.current.clear();
+    extraSigner.current = null;
+    setWallet('');
+    setBalance(null);
+    setPrepared(null);
+    try {
+      await p?.disconnect?.();
+    } catch {}
+    setNotice('Wallet disconnected.');
   };
   const build = async (
     path: string,
@@ -211,8 +274,7 @@ export function LiveApp() {
     setBusy(true);
     setError('');
     try {
-      const token = await auth();
-      const p = await api<Prepared>(path, data, token);
+      const p = await authed<Prepared>(path, data);
       extraSigner.current = key || null;
       onConfirmed.current = callback || null;
       setPrepared(p);
@@ -228,12 +290,10 @@ export function LiveApp() {
     if (monitoring.current) return;
     monitoring.current = true;
     try {
-      const token = await auth();
       for (let i = 0; i < 60; i++) {
-        const r = await api<{ status: string; error?: unknown }>(
+        const r = await authed<{ status: string; error?: unknown }>(
           'transaction?id=' + id,
           undefined,
-          token,
         );
         setPending({ id, signature, status: r.status });
         if (['confirmed', 'finalized'].includes(r.status)) {
@@ -291,11 +351,10 @@ export function LiveApp() {
         signature: knownSignature,
         status: 'awaiting RPC acknowledgement',
       });
-      const r = await api<{ signature: string; warning?: string }>(
-        'send',
-        { id: prepared.id, transaction: encode(signed.serialize()) },
-        session.current,
-      );
+      const r = await authed<{ signature: string; warning?: string }>('send', {
+        id: prepared.id,
+        transaction: encode(signed.serialize()),
+      });
       if (r.signature !== knownSignature)
         throw new Error(
           'Submission returned a different signature. Monitor the saved signature before retrying.',
@@ -324,7 +383,7 @@ export function LiveApp() {
   };
   const register = async (config: string) => {
     try {
-      await api('config/register', { config: new PublicKey(config).toBase58() }, await auth());
+      await authed('config/register', { config: new PublicKey(config).toBase58() });
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -403,7 +462,11 @@ export function LiveApp() {
             <span className="paper-tag live-tag">
               {status?.cluster === 'devnet' ? 'DEVNET' : 'MAINNET'}
             </span>
-            <button className="wallet" onClick={() => connect()}>
+            <button
+              className="wallet"
+              aria-label={wallet ? 'Disconnect wallet' : 'Connect wallet'}
+              onClick={() => (wallet ? disconnect() : connect())}
+            >
               {wallet ? short(wallet) : 'Connect wallet'} ↗
             </button>
           </div>
@@ -440,16 +503,28 @@ export function LiveApp() {
             </div>
           )}
           {!status ? (
-            <div className="loading">Connecting to Solana…</div>
+            <div className="panel">
+              <h2>Connecting to Solana…</h2>
+              <p className="muted">
+                {feedError || 'Checking the network and loading your workspace.'}
+              </p>
+              <button
+                className="secondary"
+                disabled={refreshingFeed}
+                onClick={() => refresh().catch((e) => setError(e.message))}
+              >
+                {refreshingFeed ? 'Connecting…' : 'Retry connection'}
+              </button>
+            </div>
           ) : (
             <>
               {!status.launchEnabled && (
                 <div className="setup-banner">
                   <div>
-                    <strong>Complete platform setup.</strong>
+                    <strong>Browse now. Finish trading setup when you’re ready.</strong>
                     <p>
                       {!status.feeWallet
-                        ? 'Add your platform wallet, RPC and public URL in the host environment.'
+                        ? 'Live market previews work below. Your own launches need the platform wallet, RPC and public URL.'
                         : !status.configReady
                           ? 'Create or register the on-chain partner config.'
                           : !status.transactionsEnabled
@@ -518,11 +593,15 @@ export function LiveApp() {
                   </section>
                   <div className="stats">
                     <Stat label="Network" value={status.cluster} sub="RPC genesis verified" />
-                    <Stat label="Curve fee" value="0.50%" sub="Forge excludes launch-slot trades" />
                     <Stat
-                      label="Indexed Forge coins"
+                      label="Forge curve fee"
+                      value="0.50%"
+                      sub="External markets use their own fee policy"
+                    />
+                    <Stat
+                      label="Markets available"
                       value={String(markets.length)}
-                      sub="Up to 100 pools · refreshes every 20s"
+                      sub="Forge launches + public market preview"
                     />
                     <Stat
                       label="Your balance"
@@ -544,6 +623,28 @@ export function LiveApp() {
                       />
                     </label>
                   </div>
+                  <div className="feed-status">
+                    <span>
+                      {refreshingFeed
+                        ? 'Refreshing live markets…'
+                        : updatedAt
+                          ? `Updated ${new Date(updatedAt).toLocaleTimeString()}`
+                          : 'Waiting for market data'}
+                      {feedError && ' · Some data is unavailable'}
+                    </span>
+                    <button
+                      className="secondary"
+                      disabled={refreshingFeed}
+                      onClick={() => refresh().catch((e) => setError(e.message))}
+                    >
+                      Refresh markets
+                    </button>
+                  </div>
+                  {feedError && (
+                    <p className="inline-error" role="status">
+                      {feedError}
+                    </p>
+                  )}
                   <div className="scan-form">
                     <input
                       aria-label="Import mint address"
@@ -596,7 +697,10 @@ export function LiveApp() {
                                 {fmt(m.marketCap, 2)} <span>SOL</span>
                               </strong>
                             </div>
-                            <span className="reward-pill">{m.route}</span>
+                            <span className="reward-pill">
+                              {m.ownConfig ? 'Forge · ' : ''}
+                              {m.route}
+                            </span>
                           </div>
                           <div className="progress-label">
                             <span>Curve progress</span>
@@ -612,7 +716,7 @@ export function LiveApp() {
                     <div className="empty">
                       {status.configReady
                         ? 'No coins have launched on this Forge config yet.'
-                        : 'Register your partner config to populate the live discovery deck.'}
+                        : 'Live market previews are unavailable right now. Refresh above or paste a mint address to open a market.'}
                     </div>
                   )}
                 </>
@@ -760,12 +864,10 @@ export function LiveApp() {
                     setBusy(true);
                     setError('');
                     try {
-                      const token = await auth(),
-                        mint = Keypair.generate();
-                      const m = await api<{ uri: string; name: string; ticker: string }>(
+                      const mint = Keypair.generate();
+                      const m = await authed<{ uri: string; name: string; ticker: string }>(
                         'metadata',
                         { mint: mint.publicKey.toBase58(), name, ticker, description, image },
-                        token,
                       );
                       await build(
                         'launch',
@@ -911,10 +1013,30 @@ export function LiveApp() {
               <dd>{wallet}</dd>
               {prepared.intent.kind === 'swap' && (
                 <>
-                  <dt>Input base units</dt>
-                  <dd>{String(prepared.intent.amountIn)}</dd>
-                  <dt>Minimum received base units</dt>
-                  <dd>{String(prepared.intent.minimumAmountOut)}</dd>
+                  <dt>You pay</dt>
+                  <dd>
+                    {fmt(
+                      decimal(
+                        String(prepared.intent.amountIn),
+                        prepared.intent.side === 'buy' ? 9 : 6,
+                      ),
+                      9,
+                    )}{' '}
+                    {prepared.intent.side === 'buy' ? 'SOL' : 'tokens'}
+                  </dd>
+                  <dt>Minimum you receive</dt>
+                  <dd>
+                    {fmt(
+                      decimal(
+                        String(prepared.intent.minimumAmountOut),
+                        prepared.intent.side === 'buy' ? 6 : 9,
+                      ),
+                      9,
+                    )}{' '}
+                    {prepared.intent.side === 'buy' ? 'tokens' : 'SOL'}
+                  </dd>
+                  <dt>Token mint</dt>
+                  <dd>{String(prepared.intent.mint)}</dd>
                   <dt>Route</dt>
                   <dd>{String(prepared.intent.route)}</dd>
                 </>
@@ -1026,9 +1148,12 @@ function LiveMarket({
     [error, setError] = useState('');
   useEffect(() => {
     let active = true;
+    let updating = false;
     setQ(null);
     setError('');
     const update = async () => {
+      if (updating) return;
+      updating = true;
       try {
         const value = await api<Quote>('quote', {
           mint: m.mint,
@@ -1045,6 +1170,8 @@ function LiveMarket({
           setQ(null);
           setError((e as Error).message);
         }
+      } finally {
+        updating = false;
       }
     };
     const t = setTimeout(update, 400),
@@ -1056,6 +1183,28 @@ function LiveMarket({
     };
   }, [m.mint, side, amount, bps]);
   const held = balance?.tokens.find((t) => t.mint === m.mint)?.amount || '0';
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const quoteExpired = !!q && now >= q.expiresAt;
+  let insufficient = false;
+  try {
+    insufficient =
+      !!wallet &&
+      units(amount, side === 'buy' ? 9 : m.decimals) >
+        BigInt(side === 'buy' ? balance?.sol || '0' : held);
+  } catch {}
+  const reason = !wallet
+    ? 'Connect your wallet to trade.'
+    : !enabled
+      ? 'Trading is disabled until the operator completes setup.'
+      : insufficient
+        ? 'Your balance is too low for this amount.'
+        : quoteExpired
+          ? 'Quote expired. Waiting for a fresh quote…'
+          : '';
   return (
     <>
       <button className="text-button back" onClick={back}>
@@ -1092,6 +1241,16 @@ function LiveMarket({
             <dd>{new Date(m.observedAt).toLocaleTimeString()}</dd>
           </dl>
           <p>{m.description}</p>
+          <button
+            className="secondary"
+            onClick={() => {
+              const url = new URL(window.location.href);
+              url.searchParams.set('mint', m.mint);
+              navigator.clipboard.writeText(url.toString()).catch(() => {});
+            }}
+          >
+            Copy market link
+          </button>
           {!m.ownConfig && (
             <p className="inline-error">
               This token uses another partner’s fees. Review the live quote and wallet transaction.
@@ -1166,7 +1325,7 @@ function LiveMarket({
           )}
           <button
             className="primary full"
-            disabled={!wallet || !enabled || !q || busy}
+            disabled={!wallet || !enabled || !q || busy || quoteExpired || insufficient}
             onClick={() =>
               q &&
               build('swap', {
@@ -1176,11 +1335,13 @@ function LiveMarket({
                 minimumAmountOut: q.minimumAmountOut,
                 slippageBps: q.slippageBps,
                 quotedAt: q.quotedAt,
+                quoteId: q.quoteId,
               })
             }
           >
             Review {side} ↗
           </button>
+          {reason && <p className="order-disclaimer">{reason}</p>}
           <p className="order-disclaimer">
             Exact-input swap. Quotes refresh every 10s and expire after 20s. Network fees and
             account rent are additional.

@@ -40,6 +40,30 @@ export const GENESIS = {
   'mainnet-beta': '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d',
   devnet: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
 } as const;
+export function allowedOrigin(
+  origin: string | undefined,
+  host: string | undefined,
+  runtime: Pick<Runtime, 'production' | 'publicUrl'>,
+) {
+  if (!origin) return true;
+  if (origin === runtime.publicUrl) return true;
+  if (runtime.production) return false;
+  try {
+    const incoming = new URL(origin),
+      configured = new URL(runtime.publicUrl);
+    if (!['http:', 'https:'].includes(incoming.protocol)) return false;
+    if (incoming.host === host) return true;
+    const local = (h: string) => ['127.0.0.1', 'localhost', '[::1]'].includes(h);
+    return (
+      local(incoming.hostname) &&
+      local(configured.hostname) &&
+      incoming.port === configured.port &&
+      incoming.protocol === configured.protocol
+    );
+  } catch {
+    return false;
+  }
+}
 export function rpcConnection(url: string) {
   return new Connection(url, {
     commitment: 'confirmed',

@@ -14,13 +14,15 @@ try {
       readRuntime({ ...process.env, ENABLE_MAINNET_TRANSACTIONS: 'true' }),
       store,
     );
+    const simulationQuote = await simulator.quote(mint, 'buy', '10000000', 100);
     const simulated = await simulator.swap(process.env.SIMULATION_WALLET, {
       mint,
       side: 'buy',
-      amount: quote.amountIn,
-      minimumAmountOut: quote.minimumAmountOut,
+      amount: simulationQuote.amountIn,
+      minimumAmountOut: simulationQuote.minimumAmountOut,
       slippageBps: 100,
-      quotedAt: quote.quotedAt,
+      quotedAt: simulationQuote.quotedAt,
+      quoteId: simulationQuote.quoteId,
     });
     const summary = (p: Awaited<ReturnType<LiveChain['prepare']>>) => ({
       simulation: p.simulation,

@@ -45,6 +45,7 @@ const market = {
   observedAt: Date.now(),
 };
 let verifiedSignatures = 0;
+let expiredSessionTested = false;
 const intents = new Map();
 function prepared(kind, input) {
   const tx = new Transaction({
@@ -146,6 +147,9 @@ try {
       case 'markets':
         data = [market];
         break;
+      case 'featured':
+        data = { coins: [], errors: [] };
+        break;
       case 'market':
         data = market;
         break;
@@ -158,6 +162,7 @@ try {
         break;
       case 'quote':
         data = {
+          quoteId: 'browser-fixture-quote',
           amountIn: input.amount,
           amountOut: input.side === 'buy' ? '1000000' : '10000000',
           minimumAmountOut: input.side === 'buy' ? '990000' : '9900000',
@@ -171,6 +176,10 @@ try {
         data = [{ position: pool, pool }];
         break;
       case 'swap':
+        if (!expiredSessionTested) {
+          expiredSessionTested = true;
+          return route.fulfill({ status: 401, json: { error: 'Test expired session' } });
+        }
         data = prepared('swap', { ...input, amountIn: input.amount });
         break;
       case 'claim':
@@ -247,6 +256,8 @@ try {
   if (verifiedSignatures !== 5)
     throw new Error(`Expected five signed fixture transactions, received ${verifiedSignatures}`);
   await page.getByRole('button', { name: '◈ Discover', exact: true }).click();
+  await page.getByRole('button', { name: 'Disconnect wallet' }).click();
+  await page.getByRole('button', { name: 'Connect wallet' }).waitFor();
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/live-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });

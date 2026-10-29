@@ -10,6 +10,8 @@ Mainnet quoting and an actual SDK-built DAMM v2 swap simulation passed. Local se
 
 ## Run locally
 
+Version 0.2.1 fixes development-proxy sign-in, media/metadata routing, expired sessions and trade rejection after favorable price moves. The landing page now loads a real public market preview before a platform config is registered, with refresh/retry controls when RPC data is unavailable. Mainnet transaction activation still requires your deployment settings.
+
 Node **24.2+**, pnpm **11.25.0**.
 
 ```sh

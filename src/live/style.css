@@ -50,6 +50,48 @@
 .live-grid {
   margin: 25px 0;
 }
+.feed-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #89969e;
+  font-size: 11px;
+  margin: 12px 0 20px;
+}
+.feed-status .secondary {
+  padding: 7px 12px;
+}
+.position-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 15px 0;
+}
+.position-row span {
+  overflow-wrap: anywhere;
+}
+.live-notice,
+.setup-banner {
+  animation: appear 0.2s ease-out;
+}
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-notice,
+  .setup-banner {
+    animation: none;
+  }
+}
 .live-grid .progress-label {
   margin-top: 25px;
 }

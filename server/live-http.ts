@@ -90,15 +90,51 @@ export class LiveHTTP {
     this.inflight++;
     try {
       if (req.method === 'GET' && path === '/api/live/status') {
-        json(res, 200, await this.chain.status());
+        json(
+          res,
+          200,
+          await this.chain.displayReads.get('status', 4000, () => this.chain.status()),
+        );
         return true;
       }
       if (req.method === 'GET' && path === '/api/live/markets') {
-        json(res, 200, await this.chain.markets());
+        json(
+          res,
+          200,
+          await this.chain.displayReads.get('markets', 5000, () => this.chain.markets()),
+        );
+        return true;
+      }
+      if (req.method === 'GET' && path === '/api/live/featured') {
+        if (this.runtime.cluster !== 'mainnet-beta') {
+          json(res, 200, { coins: [], errors: [] });
+          return true;
+        }
+        const result = await this.chain.displayReads.get('featured', 10000, async () => {
+          try {
+            return {
+              coins: [await this.chain.market('Pmfm2RprxQRKZH1XWVsBUc2KgCTyzeDTSFbT1vJmogz')],
+              errors: [] as string[],
+            };
+          } catch {
+            return {
+              coins: [],
+              errors: [
+                'The public market preview is temporarily unavailable. Retry or use a dedicated RPC.',
+              ],
+            };
+          }
+        });
+        json(res, 200, result);
         return true;
       }
       if (req.method === 'GET' && path === '/api/live/market') {
-        json(res, 200, await this.chain.market(asKey(url.searchParams.get('mint')).toBase58()));
+        const mint = asKey(url.searchParams.get('mint')).toBase58();
+        json(
+          res,
+          200,
+          await this.chain.displayReads.get('market:' + mint, 3000, () => this.chain.market(mint)),
+        );
         return true;
       }
       if (req.method === 'GET' && path === '/api/live/balance') {

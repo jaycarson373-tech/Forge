@@ -7,6 +7,7 @@ import { readRuntime, GENESIS, RateLimit } from '../server/runtime.js';
 import { validImage } from '../server/live-http.js';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
+import BN from 'bn.js';
 test('wallet login is signature-bound, expiring, single-use and revocable', () => {
   const s = new LiveStore(':memory:');
   try {
@@ -89,6 +90,85 @@ function fixture() {
     );
   return { store, wallet, other, connection, chain, tx, broadcasts: () => broadcasts };
 }
+function quoteFixture() {
+  const f = fixture();
+  let output = 1000,
+    minimumSeen = '';
+  f.connection.getSlot = async () => 10;
+  f.chain.pool = async () => ({
+    address: f.other.publicKey,
+    pool: { isMigrated: 0, activationPoint: new BN(0) } as Awaited<
+      ReturnType<LiveChain['pool']>
+    >['pool'],
+    config: { activationType: 0 } as Awaited<ReturnType<LiveChain['pool']>>['config'],
+  });
+  f.chain.dbc.pool.swapQuote = () =>
+    ({
+      excludedTransferFeeAmountOut: new BN(output),
+      minimumAmountOut: new BN((output * 99) / 100),
+      tradingFee: new BN(5),
+    }) as ReturnType<typeof f.chain.dbc.pool.swapQuote>;
+  f.chain.dbc.pool.swap = async (input) => {
+    minimumSeen = input.minimumAmountOut.toString();
+    return f.tx();
+  };
+  return {
+    ...f,
+    setOutput: (n: number) => {
+      output = n;
+    },
+    minimumSeen: () => minimumSeen,
+  };
+}
+test('a favorable price move retains the original quoted minimum instead of rejecting the trade', async () => {
+  const f = quoteFixture();
+  try {
+    const mint = f.other.publicKey.toBase58();
+    const q = await f.chain.quote(mint, 'buy', '1000000', 100);
+    f.setOutput(1100);
+    await f.chain.swap(f.wallet.publicKey.toBase58(), {
+      mint,
+      side: 'buy',
+      amount: q.amountIn,
+      minimumAmountOut: q.minimumAmountOut,
+      slippageBps: 100,
+      quotedAt: q.quotedAt,
+      quoteId: q.quoteId,
+    });
+    assert.equal(f.minimumSeen(), '990');
+  } finally {
+    f.store.close();
+  }
+});
+test('forged quote IDs, modified bounds and adverse price moves are rejected', async () => {
+  const f = quoteFixture();
+  try {
+    const mint = f.other.publicKey.toBase58(),
+      q = await f.chain.quote(mint, 'buy', '1000000', 100);
+    const request = {
+      mint,
+      side: 'buy' as const,
+      amount: q.amountIn,
+      minimumAmountOut: q.minimumAmountOut,
+      slippageBps: 100,
+      quotedAt: q.quotedAt,
+      quoteId: q.quoteId,
+    };
+    await assert.rejects(
+      () => f.chain.swap(f.wallet.publicKey.toBase58(), { ...request, quoteId: 'forged' }),
+      /Quote expired/,
+    );
+    await assert.rejects(
+      () => f.chain.swap(f.wallet.publicKey.toBase58(), { ...request, minimumAmountOut: '1' }),
+      /quoted intent/,
+    );
+    f.setOutput(900);
+    await assert.rejects(() => f.chain.swap(f.wallet.publicKey.toBase58(), request), /Price moved/);
+    assert.equal(f.broadcasts(), 0);
+  } finally {
+    f.store.close();
+  }
+});
 test('only the exact simulated transaction with every required signature can be relayed', async () => {
   const f = fixture();
   try {

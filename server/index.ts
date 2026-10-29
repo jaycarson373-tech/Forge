@@ -7,7 +7,7 @@ import { Store } from './store.js';
 import { inspectMint } from './inspect.js';
 import { execute, makeCoin, quote } from '../src/domain.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readRuntime } from './runtime.js';
+import { readRuntime, allowedOrigin } from './runtime.js';
 import { LiveHTTP, HttpError } from './live-http.js';
 if (existsSync('.env')) loadEnvFile('.env');
 const runtime = readRuntime();
@@ -45,16 +45,11 @@ export const server = createServer(async (req, res) => {
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     );
   }
-  const url = new URL(req.url || '/', 'http://localhost');
   try {
+    const url = new URL(req.url || '/', 'http://localhost');
     if (req.method === 'POST') {
       const origin = req.headers.origin;
-      if (
-        origin &&
-        (runtime.production
-          ? origin !== runtime.publicUrl
-          : new URL(origin).host !== req.headers.host)
-      )
+      if (!allowedOrigin(origin, req.headers.host, runtime))
         return send(res, 403, { error: 'Cross-origin writes are disabled.' });
       if (!req.headers['content-type']?.startsWith('application/json'))
         return send(res, 415, { error: 'Use application/json.' });
@@ -69,7 +64,7 @@ export const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/config')
       return send(res, 200, {
         mode: runtime.mode,
-        balanceLabel: 'Paper SOL',
+        balanceLabel: runtime.mode === 'paper' ? 'Paper SOL' : 'SOL',
         sdk: '2.0.0',
         liveTransactions: runtime.transactionsEnabled,
       });
@@ -140,8 +135,14 @@ export const server = createServer(async (req, res) => {
     });
     res.end(req.method === 'HEAD' ? undefined : bytes);
   } catch (error) {
-    send(res, error instanceof HttpError ? error.status : 400, {
-      error: error instanceof Error ? error.message : 'Request failed.',
+    const missing =
+      !!error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT';
+    send(res, missing ? 404 : error instanceof HttpError ? error.status : 400, {
+      error: missing
+        ? 'Resource not found.'
+        : error instanceof Error
+          ? error.message
+          : 'Request failed.',
     });
   }
 });

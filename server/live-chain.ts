@@ -23,6 +23,7 @@ import { forgeCurve } from './meteora.js';
 import { GENESIS, type Runtime, rpcConnection } from './runtime.js';
 import { LiveStore, hash } from './live-store.js';
 import { chainJSON } from './inspect.js';
+import { ReadCache } from './read-cache.js';
 export const asKey = (value: unknown) => {
   if (typeof value !== 'string') throw new Error('Public address required.');
   return new PublicKey(value);
@@ -68,6 +69,19 @@ export class LiveChain {
   cp: CpAmm;
   private verifiedAt = 0;
   private marketCache: { at: number; coins: unknown[] } | null = null;
+  readonly displayReads = new ReadCache();
+  private poolAddresses = new Map<string, PublicKey>();
+  private quotes = new Map<
+    string,
+    {
+      mint: string;
+      side: 'buy' | 'sell';
+      amountIn: string;
+      minimumAmountOut: string;
+      slippageBps: number;
+      expiresAt: number;
+    }
+  >();
   constructor(
     readonly runtime: Runtime,
     readonly store: LiveStore,
@@ -199,9 +213,16 @@ export class LiveChain {
   }
   async pool(mint: string) {
     const key = asKey(mint);
-    const found = await this.dbc.state.getPoolByBaseMint(key);
-    if (!found) throw new Error('No Meteora DBC launch pool found for this mint.');
+    const known = this.poolAddresses.get(mint);
+    let found = known ? { publicKey: known, account: await this.dbc.state.getPool(known) } : null;
+    if (!found?.account) found = await this.dbc.state.getPoolByBaseMint(key);
+    if (!found?.account) throw new Error('No Meteora DBC launch pool found for this mint.');
     const pool = found.account.poolState;
+    if (!pool.baseMint.equals(key))
+      throw new Error('Pool mint does not match the requested market.');
+    if (this.poolAddresses.size >= 128)
+      this.poolAddresses.delete(this.poolAddresses.keys().next().value!);
+    this.poolAddresses.set(mint, found.publicKey);
     const config = await this.dbc.state.getPoolConfig(pool.config);
     if (!config || !config.quoteMint.equals(NATIVE_MINT) || config.tokenType !== 0)
       throw new Error('Only classic SPL tokens paired with SOL are supported.');
@@ -240,8 +261,14 @@ export class LiveChain {
       executionPool,
       config: pool.config.toBase58(),
       creator: pool.creator.toBase58(),
-      name: metadata?.name || `Token ${mint.slice(0, 6)}`,
-      ticker: metadata?.ticker || mint.slice(0, 5),
+      name:
+        metadata?.name ||
+        (mint === 'Pmfm2RprxQRKZH1XWVsBUc2KgCTyzeDTSFbT1vJmogz'
+          ? 'Mogz.fun'
+          : `Token ${mint.slice(0, 6)}`),
+      ticker:
+        metadata?.ticker ||
+        (mint === 'Pmfm2RprxQRKZH1XWVsBUc2KgCTyzeDTSFbT1vJmogz' ? 'MOGZ' : mint.slice(0, 5)),
       description: metadata?.description || '',
       image: metadata?.image || '',
       uri: metadata?.uri || '',
@@ -362,7 +389,7 @@ export class LiveChain {
       fee = q.tradingFee;
     }
     if (out.lte(new BN(0)) || min.lte(new BN(0))) throw new Error('Trade amount is too small.');
-    return {
+    const result = {
       mint,
       side,
       amountIn: amount,
@@ -375,6 +402,11 @@ export class LiveChain {
       quotedAt: Date.now(),
       expiresAt: Date.now() + 20000,
     };
+    const quoteId = randomUUID();
+    for (const [id, q] of this.quotes) if (q.expiresAt < Date.now()) this.quotes.delete(id);
+    if (this.quotes.size >= 5000) this.quotes.delete(this.quotes.keys().next().value!);
+    this.quotes.set(quoteId, result);
+    return { ...result, quoteId };
   }
   async prepare(tx: Transaction, wallet: string, intent: Record<string, unknown>) {
     await this.enabled();
@@ -445,6 +477,7 @@ export class LiveChain {
     await this.cluster();
     this.validateConfig(await this.dbc.state.getPoolConfig(asKey(address)));
     this.store.setSetting(`dbc-config:${this.runtime.cluster}`, address);
+    this.displayReads.clear();
     this.marketCache = null;
     return this.status();
   }
@@ -497,6 +530,7 @@ export class LiveChain {
       slippageBps: number;
       minimumAmountOut: string;
       quotedAt: number;
+      quoteId?: string;
     },
   ) {
     await this.enabled();
@@ -506,12 +540,21 @@ export class LiveChain {
       request.quotedAt > Date.now() + 1000
     )
       throw new Error('Quote expired. Request a fresh quote.');
+    const original = this.quotes.get(request.quoteId || '');
+    if (!original || original.expiresAt < Date.now())
+      throw new Error('Quote expired. Request a fresh quote.');
+    if (
+      original.mint !== request.mint ||
+      original.side !== request.side ||
+      original.amountIn !== request.amount ||
+      original.slippageBps !== request.slippageBps ||
+      original.minimumAmountOut !== request.minimumAmountOut
+    )
+      throw new Error('Trade does not match the quoted intent. Request a fresh quote.');
     const q = await this.quote(request.mint, request.side, request.amount, request.slippageBps);
     const minimum = rawAmount(request.minimumAmountOut);
     if (new BN(q.amountOut).lt(minimum))
       throw new Error('Price moved beyond your minimum received. Review a new quote.');
-    if (minimum.lt(new BN(q.minimumAmountOut)))
-      throw new Error('Minimum received is below the allowed slippage bound.');
     let tx: Transaction;
     if (q.route === 'dbc') {
       tx = await this.dbc.pool.swap({
@@ -673,6 +716,7 @@ export class LiveChain {
     if (status?.err) return { status: 'failed', signature: row.signature, error: status.err };
     if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
       this.marketCache = null;
+      this.displayReads.clear();
       return { status: status.confirmationStatus, signature: row.signature };
     }
     const height = await this.connection.getBlockHeight('confirmed');

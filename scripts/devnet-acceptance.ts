@@ -90,6 +90,7 @@ try {
         minimumAmountOut: buy.minimumAmountOut,
         slippageBps: 100,
         quotedAt: buy.quotedAt,
+        quoteId: buy.quoteId,
       }),
     ),
   );
@@ -107,6 +108,7 @@ try {
         minimumAmountOut: sell.minimumAmountOut,
         slippageBps: 100,
         quotedAt: sell.quotedAt,
+        quoteId: sell.quoteId,
       }),
     ),
   );
