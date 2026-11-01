@@ -18,6 +18,8 @@ The local address `http://127.0.0.1:8787` works only on the computer running For
 
 The included Vercel configuration deploys both the Vite frontend and `/api/*` routes. With no backend configured, it serves live market browsing and public wallet balances with trading explicitly disabled. No wallet sessions, transaction intents or uploaded token metadata are stored in an ephemeral function filesystem.
 
+`pnpm build:vercel` produces a self-contained Node 24 function and static assets using Vercel's Build Output API. `pnpm test:vercel` starts that exact function in an isolated directory without the source tree or dependencies, checking module loading, SDK initialization and transaction gating.
+
 For full functionality, deploy the existing Docker/Render service with persistent storage, then set **`FORGE_API_ORIGIN=https://your-backend-host`** in Vercel and redeploy. Set **`PUBLIC_URL=https://forge-mauve-mu.vercel.app`** (or your final domain) on both hosts so wallet sign-in and immutable metadata URLs use the public website. API, metadata and image requests then pass through the same public origin to the persistent service. Keep `FORGE_API_ORIGIN` server-only; never point it at the Vercel website itself.
 
 Vercel can also use `SOLANA_RPC_URL` for a dedicated RPC in browsing mode. The mainnet transaction flag alone cannot activate trading in a deployment without the persistent backend. `/healthz` checks the web service; `/readyz` returns 503 until live launch setup is complete.

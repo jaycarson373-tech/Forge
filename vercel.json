@@ -1,16 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "vite",
-  "buildCommand": "pnpm build",
-  "outputDirectory": "dist",
-  "functions": {
-    "api/forge.ts": { "maxDuration": 60 }
-  },
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/forge?__forge_path=/api/:path*" },
-    { "source": "/media/:path*", "destination": "/api/forge?__forge_path=/media/:path*" },
-    { "source": "/metadata/:path*", "destination": "/api/forge?__forge_path=/metadata/:path*" },
-    { "source": "/healthz", "destination": "/api/forge?__forge_path=/healthz" },
-    { "source": "/readyz", "destination": "/api/forge?__forge_path=/readyz" }
-  ]
+  "framework": null,
+  "buildCommand": "pnpm build:vercel"
 }

@@ -15,6 +15,8 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - run: pnpm build:server
+      - run: pnpm build:vercel
+      - run: pnpm test:vercel
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:browser
       - run: pnpm test:browser:live

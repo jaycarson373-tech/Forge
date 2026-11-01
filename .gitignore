@@ -9,3 +9,4 @@ data/
 coverage/
 *.log
 test-results/
+.vercel/
