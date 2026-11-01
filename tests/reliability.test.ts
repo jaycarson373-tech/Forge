@@ -65,3 +65,24 @@ test('wallet sessions renew before expiry and clear on wallet changes', async ()
   resolve({ wallet: 'A', token: 'stale', expires: Date.now() + 3600000 });
   await assert.rejects(() => pending, /Wallet changed/);
 });
+import { liveApi, ApiError } from '../src/live/client.js';
+
+test('a hosted read retries one cold failure while transaction POSTs never auto-retry', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    return calls === 1
+      ? new Response('FUNCTION_INVOCATION_FAILED', { status: 500 })
+      : new Response(JSON.stringify({ coins: [] }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+  });
+  assert.deepEqual(await liveApi('featured'), { coins: [] });
+  assert.equal(calls, 2);
+  calls = 0;
+  await assert.rejects(
+    liveApi('send', { id: 'intent' }),
+    (error: unknown) => error instanceof ApiError && error.status === 500,
+  );
+  assert.equal(calls, 1);
+});

@@ -6,7 +6,7 @@ export class ApiError extends Error {
     super(message);
   }
 }
-export async function liveApi<T>(
+async function requestLiveApi<T>(
   path: string,
   data?: unknown,
   token = '',
@@ -44,6 +44,24 @@ export async function liveApi<T>(
       response.status,
     );
   return result as T;
+}
+export async function liveApi<T>(
+  path: string,
+  data?: unknown,
+  token = '',
+  signal?: AbortSignal,
+): Promise<T> {
+  try {
+    return await requestLiveApi<T>(path, data, token, signal);
+  } catch (error) {
+    // A cold hosted instance may fail before returning JSON. Retry reads once;
+    // a transaction, upload, login or other POST must never be resubmitted here.
+    if (data !== undefined || signal?.aborted || (error instanceof ApiError && error.status < 500))
+      throw error;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (signal?.aborted) throw error;
+    return requestLiveApi<T>(path, data, token, signal);
+  }
 }
 export class WalletSession {
   private token = '';

@@ -1221,10 +1221,10 @@ function LiveMarket({
       units(amount, side === 'buy' ? 9 : m.decimals) >
         BigInt(side === 'buy' ? balance?.sol || '0' : held);
   } catch {}
-  const reason = !wallet
-    ? 'Connect your wallet to trade.'
-    : !enabled
-      ? 'Trading is disabled until the operator completes setup.'
+  const reason = !enabled
+    ? 'Trading is disabled until the operator completes setup.'
+    : !wallet
+      ? 'Connect your wallet to trade.'
       : insufficient
         ? 'Your balance is too low for this amount.'
         : quoteExpired
@@ -1368,8 +1368,9 @@ function LiveMarket({
           </button>
           {reason && <p className="order-disclaimer">{reason}</p>}
           <p className="order-disclaimer">
-            Exact-input swap. Quotes refresh every 10s and expire after 20s. Network fees and
-            account rent are additional.
+            {quotesEnabled
+              ? 'Exact-input swap. Quotes refresh every 10s and expire after 20s. Network fees and account rent are additional.'
+              : 'Market preview. Trading and executable quotes open after platform setup.'}
           </p>
         </section>
       </div>
