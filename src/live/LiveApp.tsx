@@ -14,6 +14,7 @@ type Status = {
   configReady: boolean;
   launchEnabled: boolean;
   error: string;
+  backendRequired?: boolean;
 };
 type Market = {
   mint: string;
@@ -229,6 +230,8 @@ export function LiveApp() {
     }
   };
   const auth = async () => {
+    if (status?.backendRequired)
+      throw new Error('Trading is waiting for the operator to connect the transaction service.');
     const p = provider.current;
     if (!p || !wallet) throw new Error('Connect your wallet first.');
     return session.current.get(wallet, async () => {
@@ -523,13 +526,15 @@ export function LiveApp() {
                   <div>
                     <strong>Browse now. Finish trading setup when you’re ready.</strong>
                     <p>
-                      {!status.feeWallet
-                        ? 'Live market previews work below. Your own launches need the platform wallet, RPC and public URL.'
-                        : !status.configReady
-                          ? 'Create or register the on-chain partner config.'
-                          : !status.transactionsEnabled
-                            ? 'Mainnet transactions are disabled in the host environment.'
-                            : status.error}
+                      {status.backendRequired
+                        ? 'Live markets and wallet balances are available. Trading will open after the operator connects the transaction service.'
+                        : !status.feeWallet
+                          ? 'Live market previews work below. Your own launches need the platform wallet, RPC and public URL.'
+                          : !status.configReady
+                            ? 'Create or register the on-chain partner config.'
+                            : !status.transactionsEnabled
+                              ? 'Mainnet transactions are disabled in the host environment.'
+                              : status.error}
                     </p>
                   </div>
                   <button
@@ -549,6 +554,7 @@ export function LiveApp() {
                   wallet={wallet}
                   balance={balance}
                   enabled={status.rpcReady && status.transactionsEnabled}
+                  quotesEnabled={!status.backendRequired}
                   busy={busy}
                   build={build}
                   back={() => setMarket(null)}
@@ -899,11 +905,21 @@ export function LiveApp() {
                         ['Fee wallet', status.feeWallet || 'Set PLATFORM_FEE_WALLET'],
                         ['Partner config', status.configAddress || 'Not registered'],
                         ['Public URL', status.publicUrl],
+                        ...(status.backendRequired
+                          ? [
+                              [
+                                'Backend',
+                                'Set FORGE_API_ORIGIN to your persistent Forge service, then redeploy.',
+                              ],
+                            ]
+                          : []),
                         [
                           'Transactions',
-                          status.transactionsEnabled
-                            ? 'Enabled'
-                            : 'Set ENABLE_MAINNET_TRANSACTIONS=true',
+                          status.backendRequired
+                            ? 'Waiting for persistent backend'
+                            : status.transactionsEnabled
+                              ? 'Enabled'
+                              : 'Set ENABLE_MAINNET_TRANSACTIONS=true',
                         ],
                       ].map(([k, v]) => (
                         <div key={k}>
@@ -924,7 +940,11 @@ export function LiveApp() {
                     <button
                       className="primary"
                       disabled={
-                        busy || !wallet || wallet !== status.feeWallet || !!status.configAddress
+                        busy ||
+                        !wallet ||
+                        wallet !== status.feeWallet ||
+                        !!status.configAddress ||
+                        !!status.backendRequired
                       }
                       onClick={() => {
                         const key = Keypair.generate();
@@ -945,7 +965,9 @@ export function LiveApp() {
                       />
                       <button
                         className="secondary"
-                        disabled={busy || !wallet || wallet !== status.feeWallet}
+                        disabled={
+                          busy || !wallet || wallet !== status.feeWallet || !!status.backendRequired
+                        }
                         onClick={() => register(address)}
                       >
                         Validate and register
@@ -1130,6 +1152,7 @@ function LiveMarket({
   balance,
   busy,
   enabled,
+  quotesEnabled,
   build,
   back,
 }: {
@@ -1138,6 +1161,7 @@ function LiveMarket({
   balance: Balance | null;
   busy: boolean;
   enabled: boolean;
+  quotesEnabled: boolean;
   build: (p: string, d: unknown) => Promise<boolean>;
   back: () => void;
 }) {
@@ -1151,6 +1175,7 @@ function LiveMarket({
     let updating = false;
     setQ(null);
     setError('');
+    if (!quotesEnabled) return;
     const update = async () => {
       if (updating) return;
       updating = true;
@@ -1181,7 +1206,7 @@ function LiveMarket({
       clearTimeout(t);
       clearInterval(i);
     };
-  }, [m.mint, side, amount, bps]);
+  }, [m.mint, side, amount, bps, quotesEnabled]);
   const held = balance?.tokens.find((t) => t.mint === m.mint)?.amount || '0';
   const [now, setNow] = useState(Date.now());
   useEffect(() => {

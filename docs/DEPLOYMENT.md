@@ -67,3 +67,14 @@ Sessions are one-hour bearer tokens held in browser memory and hashed in SQLite.
 Rate limits use the direct socket peer and in-process state. Behind a proxy that means requests share the proxy's limit. Add host/WAF limits appropriate to actual traffic and tune the service before a public launch. Do not trust an arbitrary forwarded IP header. Metadata uploads are authenticated, limited by size/type and subject to per-wallet/day and total asset caps. On-chain market discovery currently indexes at most 100 Forge pools per refresh.
 
 No external security audit or live production deployment was completed. Do not describe this release as “100% safe” or “audited.”
+## Vercel frontend and API routing
+
+`vercel.json` deploys the frontend and `api/forge.ts`. The function immediately serves `/api/config`, removing the static-only deployment's 404 startup failure. Live reads use the same official SDK code as the persistent service. Without `FORGE_API_ORIGIN`, wallet authentication, quotes, metadata uploads and all transaction writes return an explicit `PERSISTENT_BACKEND_REQUIRED` response; no local function database is used for these operations.
+
+To activate the existing full service behind Vercel:
+
+1. Deploy the Dockerfile or Render blueprint with a persistent disk, the platform fee wallet, a dedicated RPC and the final public Vercel/custom domain as `PUBLIC_URL`.
+2. In Vercel, set `FORGE_API_ORIGIN` to the backend's HTTPS origin, without a path. Set `PUBLIC_URL` to the final frontend origin. Redeploy.
+3. Verify `/api/config`, `/api/live/status`, media and metadata through the frontend domain. Complete the acceptance steps above before enabling mainnet transactions.
+
+Do not use `/tmp` SQLite as production session/metadata storage on Vercel: it is not durable or shared across function instances. See [Vercel's SQLite guidance](https://vercel.com/kb/guide/is-sqlite-supported-in-vercel).
