@@ -10,7 +10,9 @@ Mainnet quoting and an actual SDK-built DAMM v2 swap simulation passed. Local se
 
 ## Run locally
 
-On this Windows workspace, double-click **Open Forge.cmd** after the first build. It checks whether the API is running, starts the built app in the background when needed, and opens the browser. It can be used again after closing this chat. Startup logs are in `data/local-server.out.log` and `data/local-server.err.log`.
+On Windows, install Node.js **24.2+**, download or clone this repository, then double-click **Open Forge.cmd**. The launcher installs dependencies and builds missing or updated files automatically, starts the app in the background, and opens the browser. Keep the setup window open until it finishes; the first run needs internet access. It can be used again after closing this chat. Startup logs are in `data/local-server.out.log` and `data/local-server.err.log`.
+
+The local address `http://127.0.0.1:8787` works only on the computer running Forge. Pushing to GitHub stores the source; it does not publish a working web service. Static hosting alone cannot run the wallet authentication, database or transaction API. For a public URL, deploy the complete Node service using the Dockerfile or Render blueprint below.
 
 Version 0.2.1 fixes development-proxy sign-in, media/metadata routing, expired sessions and trade rejection after favorable price moves. The landing page now loads a real public market preview before a platform config is registered, with refresh/retry controls when RPC data is unavailable. Mainnet transaction activation still requires your deployment settings.
 

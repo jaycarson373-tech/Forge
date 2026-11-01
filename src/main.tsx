@@ -1058,37 +1058,63 @@ function Research() {
   );
 }
 const root = createRoot(document.getElementById('root')!);
-function openForge() {
-  root.render(
-    <div className="panel">
-      <h1>Opening Forge…</h1>
-      <p>Connecting to the local app.</p>
-    </div>,
-  );
-  fetch('/api/config', { cache: 'no-store', signal: AbortSignal.timeout(10000) })
-    .then(async (response) => {
-      if (!response.ok) throw new Error('The API did not respond successfully.');
-      return (await response.json()) as { mode: string };
-    })
-    .then(async (config) => {
+async function openForge() {
+  let failure = 'The server could not be reached.';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    root.render(
+      <div className="panel" role="status">
+        <h1>Opening Forge…</h1>
+        <p>{attempt === 1 ? 'Connecting to Forge.' : `Reconnecting to Forge (${attempt}/3)…`}</p>
+      </div>,
+    );
+    try {
+      const response = await fetch('/api/config', {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) throw new Error(`The Forge API returned HTTP ${response.status}.`);
+      if (!response.headers.get('content-type')?.includes('application/json'))
+        throw new Error('This address serves a webpage instead of the Forge API.');
+      const config: unknown = await response.json();
+      if (
+        !config ||
+        typeof config !== 'object' ||
+        !('mode' in config) ||
+        (config.mode !== 'live' && config.mode !== 'paper')
+      )
+        throw new Error('The server did not return a valid Forge configuration.');
       if (config.mode === 'live') {
         const { LiveApp } = await import('./live/LiveApp');
         root.render(<LiveApp />);
       } else root.render(<App />);
-    })
-    .catch(() =>
-      root.render(
-        <div className="panel">
-          <h1>Forge is unavailable.</h1>
-          <p>
-            The local server or application files could not be reached. On this computer, open{' '}
-            <strong>Open Forge.cmd</strong> in the Forge folder, then retry.
-          </p>
-          <button className="primary" onClick={() => window.location.reload()}>
-            Retry Forge ↗
-          </button>
-        </div>,
-      ),
-    );
+      return;
+    } catch (error) {
+      failure = error instanceof Error ? error.message : 'The server could not be reached.';
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+    }
+  }
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+  root.render(
+    <div className="panel" role="alert">
+      <h1>Forge could not connect.</h1>
+      <p>{failure}</p>
+      <p>
+        {local ? (
+          <>
+            Open <strong>Open Forge.cmd</strong> in the downloaded Forge folder. Wait for setup to
+            finish, then retry. The launcher starts the server this page needs.
+          </>
+        ) : (
+          <>
+            The website’s Forge service is unavailable. The host must run the complete Node service,
+            including /api/config. Check the deployment logs and service status.
+          </>
+        )}
+      </p>
+      <button className="primary" onClick={() => window.location.reload()}>
+        Retry Forge ↗
+      </button>
+    </div>,
+  );
 }
-openForge();
+void openForge();

@@ -32,8 +32,34 @@ try {
   const page = await browser.newPage({ viewport: { width: 1512, height: 1100 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  // A warming/restarting API must recover without requiring a manual reload.
+  let configAttempts = 0;
+  await page.route('**/api/config', (route) => {
+    configAttempts++;
+    return configAttempts < 3
+      ? route.fulfill({ status: 503, contentType: 'application/json', body: '{}' })
+      : route.continue();
+  });
   await page.goto('http://127.0.0.1:18788');
   await page.getByText('Fresh signals').waitFor();
+  if (configAttempts !== 3) throw new Error('Startup did not retry a temporarily unavailable API.');
+  await page.unroute('**/api/config');
+
+  // Static-host HTML must explain the missing API and recover after Retry.
+  const recovery = await browser.newPage();
+  await recovery.route('**/api/config', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: '<!doctype html><h1>Static host</h1>',
+    }),
+  );
+  await recovery.goto('http://127.0.0.1:18788');
+  await recovery.getByRole('heading', { name: 'Forge could not connect.' }).waitFor();
+  await recovery.getByText('This address serves a webpage instead of the Forge API.').waitFor();
+  await recovery.unroute('**/api/config');
+  await recovery.getByRole('button', { name: 'Retry Forge' }).click();
+  await recovery.getByText('Fresh signals').waitFor();
+  await recovery.close();
   await page.screenshot({ path: 'test-results/desktop.png', fullPage: true });
   await page.getByRole('button', { name: 'Moon Circuit' }).click();
   await page.waitForFunction(() => !document.querySelector('.order-panel .primary')?.disabled);
